@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Budget Drive POC</title>
+  <meta name="theme-color" content="#2f6f4f">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  <style>
+    :root { --bg:#f6f7f5; --card:#fff; --ink:#1d2320; --muted:#5d6762; --line:#d9ddd9; --accent:#2f6f4f; --warn:#9a5b00; --warnbg:#fff4e0; --okbg:#e6f4ec; --err:#a32020; }
+    @media (prefers-color-scheme: dark) { :root { --bg:#141816; --card:#1d2321; --ink:#e7ece9; --muted:#9aa49f; --line:#333b37; --accent:#6cc497; --warn:#f0b35a; --warnbg:#2f2614; --okbg:#173024; --err:#ff8080; } }
+    * { box-sizing: border-box; }
+    body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+    main { max-width: 720px; margin: 0 auto; padding: 16px 16px 48px; }
+    header { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:12px; }
+    header h1 { font-size:20px; margin:0; flex:1; }
+    .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px; margin:12px 0; }
+    .card h2 { font-size:15px; margin:0 0 8px; color:var(--muted); font-weight:600; text-transform:uppercase; letter-spacing:.04em; }
+    button { font:inherit; padding:10px 14px; border-radius:10px; border:1px solid var(--line); background:var(--card); color:var(--ink); cursor:pointer; min-height:44px; }
+    button.primary { background:var(--accent); color:#fff; border-color:var(--accent); }
+    @media (prefers-color-scheme: dark) { button.primary { color:#0d1a13; } }
+    button:disabled { opacity:.45; cursor:default; }
+    .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+    input[type=text], input[type=email], input[type=password] { font:inherit; padding:10px; border-radius:10px; border:1px solid var(--line); background:var(--bg); color:var(--ink); flex:1; min-width:0; min-height:44px; }
+    textarea { width:100%; min-height:220px; font:14px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; padding:10px; border-radius:10px; border:1px solid var(--line); background:var(--bg); color:var(--ink); }
+    textarea[readonly] { opacity:.8; }
+    #status { padding:12px 14px; border-radius:12px; font-weight:600; }
+    #status.edit { background:var(--okbg); }
+    #status.ro { background:var(--warnbg); color:var(--warn); }
+    .muted { color:var(--muted); font-size:14px; }
+    .err { color:var(--err); }
+    #log { font:12px/1.4 ui-monospace, monospace; white-space:pre-wrap; max-height:200px; overflow:auto; color:var(--muted); margin:0; }
+    #backups li { margin:4px 0; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+    #backups { padding-left:18px; margin:0; }
+    .hidden { display:none !important; }
+    .pill { font-size:12px; padding:2px 8px; border-radius:99px; background:var(--warnbg); color:var(--warn); }
+    label { display:flex; gap:8px; align-items:center; }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Budget Drive POC <span id="mockPill" class="pill hidden">demo mode</span></h1>
+    <span id="who" class="muted"></span>
+    <button id="signOutBtn" class="hidden">Sign out</button>
+  </header>
+
+  <section id="setupCard" class="card hidden">
+    <h2>One-time setup</h2>
+    <p>Paste the <b>OAuth Client ID</b> from Google Cloud (see README). It is not a secret; it is stored in this browser only. You can also put it in <code>config.js</code>.</p>
+    <div class="row"><input id="clientIdInput" type="text" placeholder="1234-abc.apps.googleusercontent.com"><button id="saveClientIdBtn" class="primary">Save</button></div>
+    <p class="muted">Just want to see it work? Try demo mode with no Google account: open <a href="?mock=alice">?mock=alice</a> in one tab and <a href="?mock=bob">?mock=bob</a> in another.</p>
+  </section>
+
+  <section id="signInCard" class="card hidden">
+    <h2>Sign in</h2>
+    <p>Sign in with the Google account whose Drive holds (or will hold) the shared folder.</p>
+    <button id="signInBtn" class="primary">Sign in with Google</button>
+  </section>
+
+  <section id="folderCard" class="card hidden">
+    <h2>Shared folder</h2>
+    <p id="folderMsg"></p>
+    <button id="createFolderBtn" class="primary hidden">Create shared folder</button>
+  </section>
+
+  <div id="mainArea" class="hidden">
+    <div id="status"></div>
+
+    <section class="card">
+      <div class="row" style="margin-bottom:10px">
+        <button id="takeLockBtn" class="primary">Start editing</button>
+        <button id="takeOverBtn" class="hidden">Take over from my other device</button>
+        <button id="releaseBtn">Stop editing</button>
+        <button id="refreshBtn">Refresh</button>
+      </div>
+      <div id="unlockBox" class="row hidden" style="margin-bottom:10px">
+        <input id="unlockPass" type="password" placeholder="Passphrase to open the encrypted file">
+        <button id="unlockBtn" class="primary">Unlock</button>
+      </div>
+      <textarea id="doc" readonly spellcheck="false"></textarea>
+      <div class="row" style="margin-top:10px">
+        <button id="addEntryBtn">Add test entry</button>
+        <button id="saveBtn" class="primary">Save to Drive</button>
+      </div>
+      <p id="docInfo" class="muted"></p>
+      <p id="msg"></p>
+    </section>
+
+    <section class="card">
+      <h2>Encryption (optional)</h2>
+      <label><input id="encryptChk" type="checkbox"> Encrypt the file on Drive with a passphrase</label>
+      <div class="row" style="margin-top:8px"><input id="passInput" type="password" placeholder="Passphrase (both of you need it)"></div>
+      <p class="muted">Applies on the next save. Google then only sees scrambled data. If you forget the passphrase, the data cannot be recovered.</p>
+    </section>
+
+    <section id="shareCard" class="card hidden">
+      <h2>Share with your partner</h2>
+      <div class="row"><input id="shareEmail" type="email" placeholder="partner@gmail.com"><button id="shareBtn">Share folder</button></div>
+      <p class="muted">Gives them edit access to the folder. Google emails them a link. They then open this same app and sign in.</p>
+    </section>
+
+    <section class="card">
+      <h2>Backups <span id="backupCount" class="muted"></span></h2>
+      <ol id="backups"></ol>
+      <button id="loadBackupsBtn">Show backups</button>
+    </section>
+  </div>
+
+  <section class="card">
+    <h2>Activity log</h2>
+    <pre id="log"></pre>
+  </section>
+</main>
+<script src="config.js"></script>
+<script type="module" src="app.js"></script>
+</body>
+</html>
